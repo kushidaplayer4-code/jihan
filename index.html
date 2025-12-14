@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>缶ふりリズムゲーム</title>
+
+<style>
+body {
+  text-align: center;
+  font-family: sans-serif;
+  background: #f2f2f2;
+}
+
+img {
+  width: 80%;
+  max-width: 320px;
+}
+
+button {
+  font-size: 20px;
+  padding: 12px 24px;
+  margin-top: 16px;
+}
+
+#count {
+  font-size: 28px;
+  font-weight: bold;
+}
+
+#rhythm {
+  width: 160px;
+  height: 160px;
+  margin: 20px auto;
+  border-radius: 50%;
+  border: 3px dashed #aaa;
+  position: relative;
+}
+
+#circle {
+  width: 30px;
+  height: 30px;
+  background: red;
+  border-radius: 50%;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) scale(0.3);
+}
+</style>
+</head>
+
+<body>
+
+<h1>缶をリズムよくふれ！</h1>
+
+<img id="gameImage" src="imgA.png">
+
+<div id="rhythm">
+  <div id="circle"></div>
+</div>
+
+<p>回数：<span id="count">0</span></p>
+
+<button id="startBtn">スタート</button>
+
+<script>
+/* ===== 設定値（イベント用おすすめ） ===== */
+const PLAY_TIME = 7000;       // 7秒
+const CLEAR_COUNT = 8;        // 成功回数
+const SHAKE_THRESHOLD = 25;   // 振りの強さ
+const IDEAL_INTERVAL = 700;   // 理想テンポ(ms)
+const TOLERANCE = 250;        // 許容範囲
+const BPM = 85;
+
+/* ===== 変数 ===== */
+let count = 0;
+let playing = false;
+let lastShake = 0;
+let toggle = false;
+let endTimer;
+let rhythmTimer;
+let audioCtx;
+
+/* ===== DOM ===== */
+const img = document.getElementById("gameImage");
+const countEl = document.getElementById("count");
+const startBtn = document.getElementById("startBtn");
+const circle = document.getElementById("circle");
+
+/* ===== メトロノーム音 ===== */
+function playClick() {
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.frequency.value = 800;
+  gain.gain.value = 0.1;
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+  osc.start();
+  osc.stop(audioCtx.currentTime + 0.05);
+}
+
+/* ===== リズムガイド ===== */
+function startRhythm() {
+  const startTime = Date.now();
+  rhythmTimer = setInterval(() => {
+    const elapsed = (Date.now() - startTime) % IDEAL_INTERVAL;
+    const scale = 0.3 + (elapsed / IDEAL_INTERVAL) * 1.5;
+    circle.style.transform =
+      `translate(-50%, -50%) scale(${scale})`;
+    playClick();
+  }, IDEAL_INTERVAL);
+}
+
+function stopRhythm() {
+  clearInterval(rhythmTimer);
+  circle.style.transform = "translate(-50%, -50%) scale(0.3)";
+}
+
+/* ===== スタート ===== */
+startBtn.onclick = async () => {
+  if (typeof DeviceMotionEvent.requestPermission === "function") {
+    const permission = await DeviceMotionEvent.requestPermission();
+    if (permission !== "granted") {
+      alert("センサーの使用を許可してください");
+      return;
+    }
+  }
+
+  count = 0;
+  lastShake = 0;
+  toggle = false;
+  playing = true;
+  countEl.textContent = count;
+  img.src = "imgA.png";
+  startBtn.disabled = true;
+
+  startRhythm();
+
+  endTimer = setTimeout(endGame, PLAY_TIME);
+};
+
+/* ===== 振り判定（リズム重視） ===== */
+window.addEventListener("devicemotion", (e) => {
+  if (!playing) return;
+
+  const acc = e.accelerationIncludingGravity;
+  if (!acc) return;
+
+  const power = Math.abs(acc.x) + Math.abs(acc.y) + Math.abs(acc.z);
+  const now = Date.now();
+
+  if (power > SHAKE_THRESHOLD) {
+    if (lastShake === 0) {
+      lastShake = now;
+      return;
+    }
+
+    const interval = now - lastShake;
+
+    if (
+      interval >= IDEAL_INTERVAL - TOLERANCE &&
+      interval <= IDEAL_INTERVAL + TOLERANCE
+    ) {
+      lastShake = now;
+      count++;
+      countEl.textContent = count;
+
+      toggle = !toggle;
+      img.src = toggle ? "imgD.png" : "imgE.png";
+
+      navigator.vibrate(80);
+      countEl.style.transform = "scale(1.3)";
+      setTimeout(() => countEl.style.transform = "scale(1)", 150);
+    } else if (interval > IDEAL_INTERVAL + TOLERANCE) {
+      lastShake = now;
+    }
+  }
+});
+
+/* ===== 終了 ===== */
+function endGame() {
+  playing = false;
+  stopRhythm();
+  startBtn.disabled = false;
+
+  if (count >= CLEAR_COUNT) {
+    img.src = "imgB.png";
+    navigator.vibrate([200,100,200]);
+  } else {
+    img.src = "imgC.png";
+  }
+}
+</script>
+
+</body>
+</html>
